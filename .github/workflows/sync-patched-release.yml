@@ -71,7 +71,7 @@ jobs:
       - name: Sync main from upstream
         if: steps.check-main.outputs.has_main_update == 'true' || github.event.inputs.force_sync == 'true'
         run: |
-          git checkout main
+          git checkout -B main origin/main
           git reset --hard upstream/main
           git push origin main --force-with-lease
 
@@ -102,7 +102,7 @@ jobs:
 
           for branch in $(git branch -r | grep -E 'origin/(fix|refactor)/' | sed 's| *origin/||'); do
             echo "::group::Rebasing $branch onto main"
-            git checkout "$branch"
+            git checkout -B "$branch" "origin/$branch"
             if ! git rebase origin/main; then
               echo "::warning::Rebase failed for $branch"
               git rebase --abort
@@ -166,7 +166,7 @@ jobs:
               || echo "Failed to create issue"
           }
 
-          git checkout patched
+          git checkout -B patched origin/patched
           git reset --hard origin/main
 
           for branch in $(git branch -r | grep -E 'origin/(fix|refactor)/' | sed 's| *origin/||'); do
@@ -305,7 +305,7 @@ jobs:
             done
 
             if [ "$failed" -eq 1 ]; then
-              git checkout main 2>/dev/null || git checkout --detach HEAD
+              git checkout -B patched origin/patched 2>/dev/null || git checkout --detach HEAD
               git branch -D "tmp-patched-${tag}" || true
 
               issue_title="[patched-release-conflict] $conflict_branch conflicts with $tag"
@@ -342,7 +342,7 @@ jobs:
             git push origin "$patched_tag"
 
             # Cleanup
-            git checkout main 2>/dev/null || git checkout --detach HEAD
+            git checkout -B patched origin/patched 2>/dev/null || git checkout --detach HEAD
             git branch -D "tmp-patched-${tag}"
 
             gh issue list --state open --json number,title \
