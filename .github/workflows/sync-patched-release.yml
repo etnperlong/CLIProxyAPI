@@ -15,6 +15,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: sync-patched-release
+  cancel-in-progress: false
+
 env:
   UPSTREAM_REPO: https://github.com/router-for-me/CLIProxyAPI.git
 
@@ -75,7 +79,7 @@ jobs:
           git reset --hard upstream/main
           git push origin main --force-with-lease
 
-      - name: Rebase fix/* and refactor/* branches onto main
+      - name: Rebase fix/*, refactor/*, and ci/* branches onto main
         if: steps.check-main.outputs.has_main_update == 'true' || github.event.inputs.force_sync == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
@@ -100,7 +104,7 @@ jobs:
               || echo "Failed to create issue"
           }
 
-          for branch in $(git branch -r | grep -E 'origin/(fix|refactor)/' | sed 's| *origin/||'); do
+          for branch in $(git branch -r | grep -E 'origin/(fix|refactor|ci)/' | sed 's| *origin/||'); do
             echo "::group::Rebasing $branch onto main"
             git checkout -B "$branch" "origin/$branch"
             if ! git rebase origin/main; then
@@ -169,7 +173,7 @@ jobs:
           git checkout -B patched origin/patched
           git reset --hard origin/main
 
-          for branch in $(git branch -r | grep -E 'origin/(fix|refactor)/' | sed 's| *origin/||'); do
+          for branch in $(git branch -r | grep -E 'origin/(fix|refactor|ci)/' | sed 's| *origin/||'); do
             echo "::group::Merging $branch into patched"
             if ! git merge --no-edit "origin/$branch"; then
               echo "::warning::Merge conflict with $branch into patched"
@@ -222,13 +226,16 @@ jobs:
             # Manual mode: use specified tag
             NEW_TAGS="${{ github.event.inputs.tag }}"
           else
-            # Auto mode: find upstream tags without -patched counterpart
-            for tag in $(git tag -l 'v*' | grep -v '\-patched' | sort -V); do
+            # Auto mode: consider only the latest upstream tag.
+            # Never backfill older tags automatically.
+            mapfile -t candidate_tags < <(git tag -l 'v*' | grep -v '\-patched' | sort -V)
+            if [ ${#candidate_tags[@]} -gt 0 ]; then
+              tag="${candidate_tags[$((${#candidate_tags[@]} - 1))]}"
               patched_tag="${tag}-patched"
               if ! git rev-parse "$patched_tag" >/dev/null 2>&1; then
-                NEW_TAGS="$NEW_TAGS $tag"
+                NEW_TAGS="$tag"
               fi
-            done
+            fi
           fi
 
           NEW_TAGS=$(echo "$NEW_TAGS" | xargs)  # trim whitespace
@@ -290,10 +297,10 @@ jobs:
             # Create temporary branch from tag
             git checkout -b "tmp-patched-${tag}" "$tag"
 
-            # Merge all fix/* and refactor/* branches
+            # Merge all fix/*, refactor/*, and ci/* branches
             failed=0
             conflict_branch=""
-            for branch in $(git branch -r | grep -E 'origin/(fix|refactor)/' | sed 's| *origin/||'); do
+            for branch in $(git branch -r | grep -E 'origin/(fix|refactor|ci)/' | sed 's| *origin/||'); do
               echo "Merging $branch..."
               if ! git merge --no-edit "origin/$branch"; then
                 echo "::warning::Merge conflict: $branch vs $tag"
