@@ -1,4 +1,4 @@
-name: sync-patched-release
+name: Sync upstream for patching
 
 on:
   schedule:
